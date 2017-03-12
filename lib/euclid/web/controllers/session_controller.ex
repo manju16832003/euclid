@@ -1,16 +1,15 @@
 defmodule Euclid.Web.SessionController do
   use Euclid.Web, :controller
 
+  alias Euclid.Auth
   alias Euclid.Auth.Login
 
-  def new(conn, _params, changeset \\ Login.changeset()) do
+  def new(conn, _params, changeset \\ Auth.change_login(%Login{})) do
     render(conn, "new.html", changeset: changeset)
   end
 
   def create(conn, %{"login" => login_params} = params) do
-    changeset = Login.changeset(login_params)
-
-    case Login.authenticate(changeset) do
+    case Auth.authenticate(login_params) do
       {:ok, user} ->
         conn
         |> Guardian.Plug.sign_in(user)

@@ -1,5 +1,5 @@
 <h1>Login</h1>
-<%= form_for @changeset, "", fn f -> %>
+<%= form_for @changeset, "", [as: :login], fn f -> %>
   <%= error_tag f, :base %>
 
   <div class="form-group">

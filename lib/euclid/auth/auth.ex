@@ -3,10 +3,11 @@ defmodule Euclid.Auth do
   The boundary for the Auth system.
   """
 
+  import Comeonin.Bcrypt, only: [checkpw: 2, dummy_checkpw: 0]
   import Ecto.{Query, Changeset}, warn: false
-  alias Euclid.Repo
 
-  alias Euclid.Auth.User
+  alias Euclid.Auth.{Login, User}
+  alias Euclid.Repo
 
   @doc """
   Returns the list of users.
@@ -38,14 +39,29 @@ defmodule Euclid.Auth do
   def get_user!(id), do: Repo.get!(User, id)
 
   @doc """
+  Returns the User identitied by the email given.
+
+  ## Examples
+
+    iex> get_user_by_email(email)
+    %User{}
+
+    iex> get_user_by_email(email)
+    nil
+  """
+  def get_user_by_email(email) do
+    Repo.get_by(User, email: email)
+  end
+
+  @doc """
   Creates a user.
 
   ## Examples
 
-      iex> create_user(user, %{field: value})
+      iex> create_user(%{field: value})
       {:ok, %User{}}
 
-      iex> create_user(user, %{field: bad_value})
+      iex> create_user(%{field: bad_value})
       {:error, %Ecto.Changeset{}}
 
   """
@@ -102,24 +118,73 @@ defmodule Euclid.Auth do
     user_changeset(user, %{})
   end
 
-  defp user_changeset(%User{} = user, attrs) do
-    user
-    |> cast(attrs, [:name, :email, :password_hash, :is_admin])
-    |> validate_required([:name, :email, :password_hash, :is_admin])
-  end
-
   @doc """
-  Returns the User identitied by the email given.
+  Authenticates a user using the given `attrs`.
 
   ## Examples
 
-    iex> get_by_email(email)
-    %User{}
+      iex> authenticate(%{"email" => "test@example.com", "password" => "s3kr!t"})
+      {:ok, %User{}}
 
-    iex> get_by_email(email)
-    nil
+      iex> authenticate(%{"email" => "test@example.com", "password" => "wrong"})
+      {:error, %Ecto.Changeset{source: %Login{}}}
+
   """
-  def get_by_email(email) do
-    Repo.get_by(User, email: email)
+  def authenticate(attrs) do
+    changeset = login_changeset(%Login{}, attrs)
+
+    if changeset.valid? do
+      %{changes: %{email: email, password: password}} = changeset
+      user = get_user_by_email(email)
+
+      case user do
+        nil ->
+          dummy_checkpw
+          {:error, add_error(changeset, :base, "invalid email or password")}
+        user ->
+          IO.puts "checking"
+          case checkpw(password, user.password_hash) do
+            true -> {:ok, user}
+            false -> {:error, add_error(changeset, :base, "invalid email or password")}
+          end
+      end
+    else
+      {:error, changeset}
+    end
+  end
+
+  def change_login(%Login{} = login) do
+    login_changeset(login, %{})
+  end
+
+  defp user_changeset(%User{} = user, attrs) do
+    user
+    |> cast(attrs, [:name, :email, :password, :is_admin])
+    |> validate_required([:name, :email, :password])
+    |> unique_constraint(:email)
+    |> validate_length(:password, min: 6)
+    |> hash_password()
+  end
+
+  defp hash_password(changeset) do
+    case changeset do
+      %Ecto.Changeset{
+        valid?: true,
+        changes: %{password: password},
+      } ->
+        put_change(
+          changeset,
+          :password_hash,
+          Comeonin.Bcrypt.hashpwsalt(password)
+        )
+      _ ->
+        changeset
+    end
+  end
+
+  defp login_changeset(%Login{} = login, attrs) do
+    login
+    |> cast(attrs, [:email, :password])
+    |> validate_required([:email, :password])
   end
 end
